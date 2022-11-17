@@ -19,6 +19,23 @@ const {
   STATE_FAILED,
 } = Runnable.constants
 
+const getCircularReplacer = (nextReplacer) => {
+  const seen = new WeakSet();
+  return (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return 'circular reference omitted';
+      }
+      seen.add(value);
+    }
+    return nextReplacer ? nextReplacer(key, value) : value;
+  };
+};
+
+const safeJsonStringify = (value, replacer) => {
+  return JSON.stringify(value, getCircularReplacer(replacer));
+};
+
 class MochaBuildkiteAnalyticsReporter {
   constructor(runner, options) {
     this._options = { token: process.env[`${options.reporterOptions.token_name}`]}
@@ -44,10 +61,12 @@ class MochaBuildkiteAnalyticsReporter {
   }
 
   testFinished(test) {
+    console.log(`#### Test object: ${safeJsonStringify(test)}`)
+
     const failureReason = test.err !== undefined ? test.err.toString() : undefined
     const prefixedTestPath = this._paths.prefixTestPath(this.getRootParentFile(test))
 
-    this._testResults.push({
+    const result = {
       'id': test.testAnalyticsId,
       'name': test.title,
       'scope': this.scope(test),
@@ -63,7 +82,10 @@ class MochaBuildkiteAnalyticsReporter {
         'end_at': performance.now() / 1000,
         'duration': test.duration / 1000,
       }
-    })
+    }
+    console.log(`##### Result object: ${safeJsonStringify(result)}`)
+
+    this._testResults.push(result)
   }
 
   testRunFinished() {
